@@ -195,7 +195,6 @@ function calculate(){
 
   let runs = Number(document.getElementById("runs").value);
   runs = Math.min(Math.max(runs, 1), 50);
-  document.getElementById("runs").value = runs;
 
   const show68 = document.getElementById("show68").checked;
   const show95 = document.getElementById("show95").checked;
@@ -236,6 +235,15 @@ function calculate(){
   const finalMean = winrate * hands / 100;
   const finalSD = sd * Math.sqrt(hands / 100);
 
+  const low68 = finalMean - finalSD;
+  const high68 = finalMean + finalSD;
+
+  const low95 = finalMean - 1.96 * finalSD;
+  const high95 = finalMean + 1.96 * finalSD;
+
+  const low98 = finalMean - 2.326 * finalSD;
+  const high98 = finalMean + 2.326 * finalSD;
+
   let ruinProb = 0;
 
   if(finalSD > 0){
@@ -245,9 +253,21 @@ function calculate(){
 
   document.getElementById("results").innerHTML = `
     <strong>Expected result:</strong> ${finalMean.toFixed(1)} bb<br>
-    <strong>Std deviation over sample:</strong> ${finalSD.toFixed(1)} bb<br>
+    <strong>Std deviation over sample:</strong> ${finalSD.toFixed(1)} bb<br><br>
+
+    <strong>68% confidence interval:</strong>
+    ${low68.toFixed(1)} bb → ${high68.toFixed(1)} bb<br>
+
+    <strong>95% confidence interval:</strong>
+    ${low95.toFixed(1)} bb → ${high95.toFixed(1)} bb<br>
+
+    <strong>98% confidence interval:</strong>
+    ${low98.toFixed(1)} bb → ${high98.toFixed(1)} bb<br><br>
+
     <strong>Chance of finishing down ≥ bankroll:</strong>
-    <span style="color:${ruinProb > 0.25 ? '#ff6b6b' : '#2ecc71'}">${(ruinProb * 100).toFixed(2)}%</span>
+    <span style="color:${ruinProb > 0.25 ? '#ff6b6b' : '#2ecc71'}">
+    ${(ruinProb * 100).toFixed(2)}%
+    </span>
   `;
 
   const datasets = [];
