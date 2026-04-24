@@ -55,13 +55,18 @@ button {
   width: auto;
 }
 
-#chart {
-  height: 700px !important;
-}
-
 .results {
   font-size: 18px;
   line-height: 1.6;
+}
+
+.chart-card {
+  height: 760px;
+}
+
+#chart {
+  width: 100% !important;
+  height: 700px !important;
 }
 </style>
 </head>
@@ -81,19 +86,19 @@ button {
 </select>
 
 <label>Winrate (bb/100)</label>
-<input id="winrate" type="number" value="5">
+<input id="winrate" type="number" value="5" step="0.1">
 
 <label>Std dev (bb/100)</label>
-<input id="sd" type="number" value="150">
+<input id="sd" type="number" value="150" step="1">
 
 <label>Total hands</label>
-<input id="hands" type="number" value="10000">
+<input id="hands" type="number" value="10000" step="100">
 
 <label>Simulation runs (1–50)</label>
 <input id="runs" type="number" min="1" max="50" value="10">
 
 <label>Bankroll (bb)</label>
-<input id="bankroll" type="number" value="2000">
+<input id="bankroll" type="number" value="2000" step="100">
 
 <div class="checkbox-row">
 <input id="show68" type="checkbox" checked>
@@ -116,7 +121,7 @@ button {
 
 <div class="card results" id="results"></div>
 
-<div class="card">
+<div class="card chart-card">
 <canvas id="chart"></canvas>
 </div>
 
@@ -124,246 +129,246 @@ button {
 
 let chart;
 
+const whiteBackgroundPlugin = {
+  id: "whiteBackground",
+  beforeDraw: (chart) => {
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, chart.width, chart.height);
+    ctx.restore();
+  }
+};
+
 function setPreset(){
-const game=document.getElementById("game").value;
-if(game!=="custom"){
-document.getElementById("sd").value=game;
-}
+  const game = document.getElementById("game").value;
+  if(game !== "custom"){
+    document.getElementById("sd").value = game;
+  }
 }
 
 function randn(){
-let u=0,v=0;
-while(u===0) u=Math.random();
-while(v===0) v=Math.random();
-return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+  let u = 0;
+  let v = 0;
+
+  while(u === 0) u = Math.random();
+  while(v === 0) v = Math.random();
+
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
 function normalCDF(x){
-return (1 - Math.erf(-x/Math.sqrt(2))) / 2;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x) / Math.sqrt(2);
+
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+
+  const t = 1 / (1 + p * x);
+  const erf = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+
+  return 0.5 * (1 + sign * erf);
 }
 
-function intervalDataset(label,data,dash){
-return{
-label:label,
-data:data,
-borderWidth:2,
-pointRadius:0,
-borderDash:dash,
-tension:0.1
-};
+function intervalDataset(label, data, dash){
+  return {
+    label: label,
+    data: data,
+    borderWidth: 2,
+    pointRadius: 0,
+    borderDash: dash,
+    tension: 0.1
+  };
 }
 
 function calculate(){
 
-const winrate=Number(document.getElementById("winrate").value);
-const sd=Number(document.getElementById("sd").value);
-const hands=Number(document.getElementById("hands").value);
-const bankroll=Number(document.getElementById("bankroll").value);
+  const winrate = Number(document.getElementById("winrate").value);
+  const sd = Number(document.getElementById("sd").value);
+  const hands = Number(document.getElementById("hands").value);
+  const bankroll = Number(document.getElementById("bankroll").value);
 
-let runs=Number(document.getElementById("runs").value);
-runs=Math.min(Math.max(runs,1),50);
+  let runs = Number(document.getElementById("runs").value);
+  runs = Math.min(Math.max(runs, 1), 50);
+  document.getElementById("runs").value = runs;
 
-const show68=document.getElementById("show68").checked;
-const show95=document.getElementById("show95").checked;
-const show98=document.getElementById("show98").checked;
+  const show68 = document.getElementById("show68").checked;
+  const show95 = document.getElementById("show95").checked;
+  const show98 = document.getElementById("show98").checked;
 
-const labels=[];
-const expectedData=[];
-const bustLine=[];
+  const labels = [];
+  const expectedData = [];
+  const bustLine = [];
 
-const upper68=[];
-const lower68=[];
-const upper95=[];
-const lower95=[];
-const upper98=[];
-const lower98=[];
+  const upper68 = [];
+  const lower68 = [];
+  const upper95 = [];
+  const lower95 = [];
+  const upper98 = [];
+  const lower98 = [];
 
-const step=100;
+  const step = 100;
 
-for(let h=0;h<=hands;h+=step){
+  for(let h = 0; h <= hands; h += step){
 
-const expected=winrate*h/100;
-const sampleSD=sd*Math.sqrt(h/100);
+    const expected = winrate * h / 100;
+    const sampleSD = sd * Math.sqrt(h / 100);
 
-labels.push(h);
-expectedData.push(expected);
-bustLine.push(-bankroll);
+    labels.push(h);
+    expectedData.push(expected);
+    bustLine.push(-bankroll);
 
-upper68.push(expected+sampleSD);
-lower68.push(expected-sampleSD);
+    upper68.push(expected + sampleSD);
+    lower68.push(expected - sampleSD);
 
-upper95.push(expected+1.96*sampleSD);
-lower95.push(expected-1.96*sampleSD);
+    upper95.push(expected + 1.96 * sampleSD);
+    lower95.push(expected - 1.96 * sampleSD);
 
-upper98.push(expected+2.326*sampleSD);
-lower98.push(expected-2.326*sampleSD);
+    upper98.push(expected + 2.326 * sampleSD);
+    lower98.push(expected - 2.326 * sampleSD);
+  }
 
-}
+  const finalMean = winrate * hands / 100;
+  const finalSD = sd * Math.sqrt(hands / 100);
 
-// risk-of-ruin approximation (normal model)
+  let ruinProb = 0;
 
-const finalMean=winrate*hands/100;
-const finalSD=sd*Math.sqrt(hands/100);
+  if(finalSD > 0){
+    const zScore = (-bankroll - finalMean) / finalSD;
+    ruinProb = normalCDF(zScore);
+  }
 
-const zScore=(-bankroll-finalMean)/finalSD;
+  document.getElementById("results").innerHTML = `
+    <strong>Expected result:</strong> ${finalMean.toFixed(1)} bb<br>
+    <strong>Std deviation over sample:</strong> ${finalSD.toFixed(1)} bb<br>
+    <strong>Chance of finishing down ≥ bankroll:</strong>
+    <span style="color:${ruinProb > 0.25 ? '#ff6b6b' : '#2ecc71'}">${(ruinProb * 100).toFixed(2)}%</span>
+  `;
 
-const ruinProb=normalCDF(zScore);
+  const datasets = [];
 
-document.getElementById("results").innerHTML=`
-<strong>Expected result:</strong> ${finalMean.toFixed(1)} bb<br>
-<strong>Std deviation:</strong> ${finalSD.toFixed(1)} bb<br>
-<strong>Chance of losing entire bankroll over sample:</strong>
-<span style="color:${ruinProb>0.25?'#ff6b6b':'#2ecc71'}">
-${(ruinProb*100).toFixed(2)}%
-</span>
-`;
+  datasets.push({
+    label: "Expected result",
+    data: expectedData,
+    borderWidth: 4,
+    pointRadius: 0
+  });
 
-const datasets=[];
+  datasets.push({
+    label: "Bankroll line",
+    data: bustLine,
+    borderWidth: 2,
+    borderDash: [6, 6],
+    pointRadius: 0
+  });
 
-datasets.push({
-label:"Expected result",
-data:expectedData,
-borderWidth:4,
-pointRadius:0
-});
+  if(show68){
+    datasets.push(intervalDataset("68% upper", upper68, [4, 4]));
+    datasets.push(intervalDataset("68% lower", lower68, [4, 4]));
+  }
 
-datasets.push({
-label:"Bankroll line",
-data:bustLine,
-borderWidth:2,
-borderDash:[6,6],
-pointRadius:0
-});
+  if(show95){
+    datasets.push(intervalDataset("95% upper", upper95, [8, 4]));
+    datasets.push(intervalDataset("95% lower", lower95, [8, 4]));
+  }
 
-if(show68){
-datasets.push(intervalDataset("68% upper",upper68,[4,4]));
-datasets.push(intervalDataset("68% lower",lower68,[4,4]));
-}
+  if(show98){
+    datasets.push(intervalDataset("98% upper", upper98, [2, 4]));
+    datasets.push(intervalDataset("98% lower", lower98, [2, 4]));
+  }
 
-if(show95){
-datasets.push(intervalDataset("95% upper",upper95,[8,4]));
-datasets.push(intervalDataset("95% lower",lower95,[8,4]));
-}
+  for(let r = 0; r < runs; r++){
 
-if(show98){
-datasets.push(intervalDataset("98% upper",upper98,[2,4]));
-datasets.push(intervalDataset("98% lower",lower98,[2,4]));
-}
+    let result = 0;
+    const line = [];
 
-for(let r=0;r<runs;r++){
+    for(let h = 0; h <= hands; h += step){
 
-let result=0;
-const line=[];
+      if(h === 0){
+        line.push(0);
+      } else {
+        result += winrate + sd * randn();
+        line.push(result);
+      }
+    }
 
-for(let h=0;h<=hands;h+=step){
+    datasets.push({
+      label: "Run " + (r + 1),
+      data: line,
+      borderWidth: 1.2,
+      pointRadius: 0,
+      tension: 0.1
+    });
+  }
 
-if(h===0){
-line.push(0);
-}else{
-result+=winrate+sd*randn();
-line.push(result);
-}
+  const ctx = document.getElementById("chart").getContext("2d");
 
-}
+  if(chart){
+    chart.destroy();
+  }
 
-datasets.push({
-label:"Run "+(r+1),
-data:line,
-borderWidth:1.2,
-pointRadius:0,
-borderColor:"rgba(100,150,255,0.25)"
-});
+  chart = new Chart(ctx, {
 
-}
+    type: "line",
+    plugins: [whiteBackgroundPlugin],
 
-const ctx=document.getElementById("chart").getContext("2d");
+    data: {
+      labels: labels,
+      datasets: datasets
+    },
 
-if(chart) chart.destroy();
+    options: {
 
-chart=new Chart(ctx,{
+      responsive: true,
+      maintainAspectRatio: false,
 
-type:"line",
+      plugins: {
 
-data:{
-labels:labels,
-datasets:datasets
-},
+        title: {
+          display: true,
+          text: "Poker Variance Simulation",
+          color: "#000"
+        },
 
-options:{
+        legend: {
+          labels: {
+            color: "#000",
+            filter: function(item){
+              return !item.text.startsWith("Run");
+            }
+          }
+        }
+      },
 
-responsive:true,
-maintainAspectRatio:false,
+      scales: {
 
-interaction:{
-mode:'nearest',
-intersect:false
-},
+        x: {
+          ticks: { color: "#000" },
+          grid: { color: "#ddd" },
+          title: {
+            display: true,
+            text: "Hands",
+            color: "#000"
+          }
+        },
 
-onHover:(event,activeElements)=>{
-
-chart.data.datasets.forEach(ds=>{
-
-if(ds.label.startsWith("Run")){
-ds.borderWidth=1.2;
-ds.borderColor="rgba(100,150,255,0.25)";
-}
-
-});
-
-if(activeElements.length>0){
-
-const ds=chart.data.datasets[activeElements[0].datasetIndex];
-
-if(ds.label.startsWith("Run")){
-ds.borderWidth=3.5;
-ds.borderColor="rgba(255,255,255,0.95)";
-}
-
-}
-
-chart.update('none');
-
-},
-
-plugins:{
-
-title:{
-display:true,
-text:"Poker Variance Simulation"
-},
-
-legend:{
-labels:{
-filter:function(item){
-return !item.text.startsWith("Run");
-}
-}
-}
-
-},
-
-scales:{
-
-x:{
-title:{
-display:true,
-text:"Hands"
-}
-},
-
-y:{
-title:{
-display:true,
-text:"Profit (bb)"
-}
-}
-
-}
-
-}
-
-});
-
+        y: {
+          ticks: { color: "#000" },
+          grid: { color: "#ddd" },
+          title: {
+            display: true,
+            text: "Profit (bb)",
+            color: "#000"
+          }
+        }
+      }
+    }
+  });
 }
 
 calculate();
