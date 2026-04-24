@@ -44,11 +44,6 @@ button {
   cursor: pointer;
 }
 
-button:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
 .checkbox-row {
   display: flex;
   align-items: center;
@@ -120,7 +115,7 @@ button:disabled {
 <span>Show 98% interval</span>
 </div>
 
-<button id="runButton" onclick="calculate()">Run simulation</button>
+<button onclick="calculate()">Run simulation</button>
 
 </div>
 
@@ -133,7 +128,6 @@ button:disabled {
 <script>
 
 let chart;
-let worker;
 
 const whiteBackgroundPlugin = {
   id: "whiteBackground",
@@ -149,52 +143,23 @@ const whiteBackgroundPlugin = {
 
 function setPreset(){
   const game = document.getElementById("game").value;
+
   if(game !== "custom"){
     document.getElementById("sd").value = game;
   }
 }
 
-/* adaptive spacing logic */
+function randn(){
+  let u = 0;
+  let v = 0;
 
-function getGraphStep(hands){
+  while(u === 0) u = Math.random();
+  while(v === 0) v = Math.random();
 
-  const targetPoints = 900;
-
-  const rawStep = hands / targetPoints;
-
-  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
-
-  const normalised = rawStep / magnitude;
-
-  let nice;
-
-  if(normalised <= 1) nice = 1;
-  else if(normalised <= 2) nice = 2;
-  else if(normalised <= 5) nice = 5;
-  else nice = 10;
-
-  return Math.max(100, nice * magnitude);
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
-
-function makeLabels(hands, step){
-
-  const labels = [];
-
-  for(let h = 0; h < hands; h += step){
-    labels.push(h);
-  }
-
-  if(labels[labels.length - 1] !== hands){
-    labels.push(hands);
-  }
-
-  return labels;
-}
-
-/* normal distribution */
 
 function normalCDF(x){
-
   const sign = x < 0 ? -1 : 1;
   x = Math.abs(x) / Math.sqrt(2);
 
@@ -206,14 +171,52 @@ function normalCDF(x){
   const p = 0.3275911;
 
   const t = 1 / (1 + p * x);
-
-  const erf = 1 - (((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x));
+  const erf = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
 
   return 0.5 * (1 + sign * erf);
 }
 
-function intervalDataset(label,data,dash){
+function getGraphStep(hands){
+  const targetPoints = 900;
+  const rawStep = hands / targetPoints;
 
+  if(rawStep <= 100){
+    return 100;
+  }
+
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const normalised = rawStep / magnitude;
+
+  let niceStep;
+
+  if(normalised <= 1){
+    niceStep = 1;
+  } else if(normalised <= 2){
+    niceStep = 2;
+  } else if(normalised <= 5){
+    niceStep = 5;
+  } else {
+    niceStep = 10;
+  }
+
+  return niceStep * magnitude;
+}
+
+function makeLabels(hands, step){
+  const labels = [];
+
+  for(let h = 0; h < hands; h += step){
+    labels.push(Math.round(h));
+  }
+
+  if(labels[labels.length - 1] !== hands){
+    labels.push(hands);
+  }
+
+  return labels;
+}
+
+function intervalDataset(label, data, dash){
   return {
     label: label,
     data: data,
@@ -222,194 +225,237 @@ function intervalDataset(label,data,dash){
     borderDash: dash,
     tension: 0.1
   };
-
 }
 
 function calculate(){
 
-  const button = document.getElementById("runButton");
+  const winrate = Number(document.getElementById("winrate").value);
+  const sd = Number(document.getElementById("sd").value);
+  let hands = Number(document.getElementById("hands").value);
+  const bankroll = Number(document.getElementById("bankroll").value);
 
-  button.disabled = true;
-  button.textContent = "Simulating...";
+  hands = Math.max(hands, 1);
+  document.getElementById("hands").value = hands;
 
-  const winrate = Number(winrateInput.value);
-  const sd = Number(sdInput.value);
-  const hands = Number(handsInput.value);
-  const bankroll = Number(bankrollInput.value);
+  let runs = Number(document.getElementById("runs").value);
+  runs = Math.min(Math.max(runs, 1), 20);
+  document.getElementById("runs").value = runs;
 
-  let runs = Number(runsInput.value);
-  runs = Math.min(Math.max(runs,1),20);
+  const show68 = document.getElementById("show68").checked;
+  const show95 = document.getElementById("show95").checked;
+  const show98 = document.getElementById("show98").checked;
 
   const step = getGraphStep(hands);
-
-  const labels = makeLabels(hands,step);
+  const labels = makeLabels(hands, step);
 
   const expectedData = [];
   const bustLine = [];
 
-  const upper68=[];
-  const lower68=[];
-  const upper95=[];
-  const lower95=[];
-  const upper98=[];
-  const lower98=[];
+  const upper68 = [];
+  const lower68 = [];
+  const upper95 = [];
+  const lower95 = [];
+  const upper98 = [];
+  const lower98 = [];
 
-  labels.forEach(h=>{
+  for(let i = 0; i < labels.length; i++){
 
-    const mean = winrate*h/100;
+    const h = labels[i];
+    const expected = winrate * h / 100;
+    const sampleSD = sd * Math.sqrt(h / 100);
 
-    const sdSample = sd*Math.sqrt(h/100);
-
-    expectedData.push(mean);
-
+    expectedData.push(expected);
     bustLine.push(-bankroll);
 
-    upper68.push(mean+sdSample);
-    lower68.push(mean-sdSample);
+    upper68.push(expected + sampleSD);
+    lower68.push(expected - sampleSD);
 
-    upper95.push(mean+1.96*sdSample);
-    lower95.push(mean-1.96*sdSample);
+    upper95.push(expected + 1.96 * sampleSD);
+    lower95.push(expected - 1.96 * sampleSD);
 
-    upper98.push(mean+2.326*sdSample);
-    lower98.push(mean-2.326*sdSample);
+    upper98.push(expected + 2.326 * sampleSD);
+    lower98.push(expected - 2.326 * sampleSD);
+  }
 
+  const finalMean = winrate * hands / 100;
+  const finalSD = sd * Math.sqrt(hands / 100);
+
+  const low68 = finalMean - finalSD;
+  const high68 = finalMean + finalSD;
+
+  const low95 = finalMean - 1.96 * finalSD;
+  const high95 = finalMean + 1.96 * finalSD;
+
+  const low98 = finalMean - 2.326 * finalSD;
+  const high98 = finalMean + 2.326 * finalSD;
+
+  let ruinProb = 0;
+
+  if(finalSD > 0){
+    const zScore = (-bankroll - finalMean) / finalSD;
+    ruinProb = normalCDF(zScore);
+  }
+
+  document.getElementById("results").innerHTML = `
+    <strong>Expected result:</strong> ${finalMean.toFixed(1)} bb<br>
+    <strong>Std deviation over sample:</strong> ${finalSD.toFixed(1)} bb<br>
+    <strong>Graph spacing:</strong> every ${Math.round(step).toLocaleString()} hands<br><br>
+
+    <strong>68% confidence interval:</strong>
+    ${low68.toFixed(1)} bb → ${high68.toFixed(1)} bb<br>
+
+    <strong>95% confidence interval:</strong>
+    ${low95.toFixed(1)} bb → ${high95.toFixed(1)} bb<br>
+
+    <strong>98% confidence interval:</strong>
+    ${low98.toFixed(1)} bb → ${high98.toFixed(1)} bb<br><br>
+
+    <strong>Chance of finishing down ≥ bankroll:</strong>
+    <span style="color:${ruinProb > 0.25 ? '#ff6b6b' : '#2ecc71'}">
+    ${(ruinProb * 100).toFixed(2)}%
+    </span>
+  `;
+
+  const datasets = [];
+
+  datasets.push({
+    label: "Expected result",
+    data: expectedData,
+    borderWidth: 4,
+    pointRadius: 0
   });
 
-  const finalMean = winrate*hands/100;
+  datasets.push({
+    label: "Bankroll line",
+    data: bustLine,
+    borderWidth: 2,
+    borderDash: [6, 6],
+    pointRadius: 0
+  });
 
-  const finalSD = sd*Math.sqrt(hands/100);
+  if(show68){
+    datasets.push(intervalDataset("68% upper", upper68, [4, 4]));
+    datasets.push(intervalDataset("68% lower", lower68, [4, 4]));
+  }
 
-  const ruinProb = normalCDF((-bankroll-finalMean)/finalSD);
+  if(show95){
+    datasets.push(intervalDataset("95% upper", upper95, [8, 4]));
+    datasets.push(intervalDataset("95% lower", lower95, [8, 4]));
+  }
 
-  results.innerHTML = `
+  if(show98){
+    datasets.push(intervalDataset("98% upper", upper98, [2, 4]));
+    datasets.push(intervalDataset("98% lower", lower98, [2, 4]));
+  }
 
-Expected result: ${finalMean.toFixed(1)} bb<br>
-Std deviation: ${finalSD.toFixed(1)} bb<br>
-Graph spacing: every ${step.toLocaleString()} hands<br><br>
+  for(let r = 0; r < runs; r++){
 
-68% interval: ${(finalMean-finalSD).toFixed(1)} → ${(finalMean+finalSD).toFixed(1)} bb<br>
-95% interval: ${(finalMean-1.96*finalSD).toFixed(1)} → ${(finalMean+1.96*finalSD).toFixed(1)} bb<br>
-98% interval: ${(finalMean-2.326*finalSD).toFixed(1)} → ${(finalMean+2.326*finalSD).toFixed(1)} bb<br><br>
+    let result = 0;
+    let previousHands = 0;
+    const line = [];
 
-Chance of losing bankroll: ${(ruinProb*100).toFixed(2)}%
+    for(let i = 0; i < labels.length; i++){
 
-`;
+      const currentHands = labels[i];
+      const handDifference = currentHands - previousHands;
 
-  if(worker) worker.terminate();
+      if(currentHands === 0){
+        result = 0;
+        line.push(0);
+      } else {
+        const meanForStep = winrate * handDifference / 100;
+        const sdForStep = sd * Math.sqrt(handDifference / 100);
 
-  worker = new Worker("worker.js");
+        result += meanForStep + sdForStep * randn();
+        line.push(result);
+      }
 
-  worker.onmessage = e=>{
-
-    const datasets=[];
+      previousHands = currentHands;
+    }
 
     datasets.push({
-      label:"Expected result",
-      data:expectedData,
-      borderWidth:4,
-      pointRadius:0
+      label: "Run " + (r + 1),
+      data: line,
+      borderWidth: 1.2,
+      pointRadius: 0,
+      tension: 0.1
     });
+  }
 
-    datasets.push({
-      label:"Bankroll line",
-      data:bustLine,
-      borderWidth:2,
-      borderDash:[6,6],
-      pointRadius:0
-    });
-
-    if(show68.checked){
-
-      datasets.push(intervalDataset("68% upper",upper68,[4,4]));
-      datasets.push(intervalDataset("68% lower",lower68,[4,4]));
-
-    }
-
-    if(show95.checked){
-
-      datasets.push(intervalDataset("95% upper",upper95,[8,4]));
-      datasets.push(intervalDataset("95% lower",lower95,[8,4]));
-
-    }
-
-    if(show98.checked){
-
-      datasets.push(intervalDataset("98% upper",upper98,[2,4]));
-      datasets.push(intervalDataset("98% lower",lower98,[2,4]));
-
-    }
-
-    e.data.runLines.forEach((line,i)=>{
-
-      datasets.push({
-        label:"Run "+(i+1),
-        data:line,
-        borderWidth:1.2,
-        pointRadius:0,
-        tension:0.1
-      });
-
-    });
-
-    drawChart(labels,datasets);
-
-    button.disabled=false;
-
-    button.textContent="Run simulation";
-
-  };
-
-  worker.postMessage({winrate,sd,labels,runs});
-
+  drawChart(labels, datasets);
 }
 
-function drawChart(labels,datasets){
+function drawChart(labels, datasets){
 
-  const ctx=chartCanvas.getContext("2d");
+  const ctx = document.getElementById("chart").getContext("2d");
 
-  if(chart) chart.destroy();
+  if(chart){
+    chart.destroy();
+  }
 
-  chart=new Chart(ctx,{
+  chart = new Chart(ctx, {
 
-    type:"line",
+    type: "line",
+    plugins: [whiteBackgroundPlugin],
 
-    plugins:[whiteBackgroundPlugin],
+    data: {
+      labels: labels,
+      datasets: datasets
+    },
 
-    data:{labels,datasets},
+    options: {
 
-    options:{
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
 
-      responsive:true,
-      maintainAspectRatio:false,
-      animation:false,
+      plugins: {
 
-      plugins:{
-        legend:{
-          labels:{
-            color:"#000",
-            filter:item=>!item.text.startsWith("Run")
+        title: {
+          display: true,
+          text: "Poker Variance Simulation",
+          color: "#000"
+        },
+
+        legend: {
+          labels: {
+            color: "#000",
+            filter: function(item){
+              return !item.text.startsWith("Run");
+            }
           }
         }
       },
 
-      scales:{
-        x:{
-          ticks:{
-            color:"#000",
-            callback:v=>Number(labels[v]).toLocaleString()
+      scales: {
+
+        x: {
+          ticks: {
+            color: "#000",
+            callback: function(value){
+              return Number(this.getLabelForValue(value)).toLocaleString();
+            }
           },
-          grid:{color:"#ddd"}
+          grid: { color: "#ddd" },
+          title: {
+            display: true,
+            text: "Hands",
+            color: "#000"
+          }
         },
-        y:{
-          ticks:{color:"#000"},
-          grid:{color:"#ddd"}
+
+        y: {
+          ticks: { color: "#000" },
+          grid: { color: "#ddd" },
+          title: {
+            display: true,
+            text: "Profit (bb)",
+            color: "#000"
+          }
         }
       }
-
     }
-
   });
-
 }
 
 calculate();
