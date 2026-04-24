@@ -8,8 +8,8 @@
 <style>
 body {
   font-family: Arial, sans-serif;
-  max-width: 1000px;
-  margin: 40px auto;
+  max-width: 1400px;
+  margin: 20px auto;
   padding: 20px;
   background: #111;
   color: #eee;
@@ -24,11 +24,6 @@ h1 {
   padding: 20px;
   border-radius: 12px;
   margin-bottom: 20px;
-}
-
-label {
-  display: block;
-  margin-top: 12px;
 }
 
 input, select, button {
@@ -58,17 +53,15 @@ button {
 
 .checkbox-row input {
   width: auto;
-  margin: 0;
 }
 
-.results p {
-  font-size: 17px;
+#chart {
+  height: 700px !important;
 }
 
-canvas {
-  background: #fff;
-  border-radius: 12px;
-  padding: 10px;
+.results {
+  font-size: 18px;
+  line-height: 1.6;
 }
 </style>
 </head>
@@ -132,9 +125,9 @@ canvas {
 let chart;
 
 function setPreset(){
-const game = document.getElementById("game").value;
-if(game !== "custom"){
-document.getElementById("sd").value = game;
+const game=document.getElementById("game").value;
+if(game!=="custom"){
+document.getElementById("sd").value=game;
 }
 }
 
@@ -143,6 +136,10 @@ let u=0,v=0;
 while(u===0) u=Math.random();
 while(v===0) v=Math.random();
 return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+function normalCDF(x){
+return (1 - Math.erf(-x/Math.sqrt(2))) / 2;
 }
 
 function intervalDataset(label,data,dash){
@@ -203,16 +200,22 @@ lower98.push(expected-2.326*sampleSD);
 
 }
 
-const finalExpected=winrate*hands/100;
+// risk-of-ruin approximation (normal model)
+
+const finalMean=winrate*hands/100;
 const finalSD=sd*Math.sqrt(hands/100);
 
+const zScore=(-bankroll-finalMean)/finalSD;
+
+const ruinProb=normalCDF(zScore);
+
 document.getElementById("results").innerHTML=`
-<h2>Results</h2>
-<p><strong>Expected:</strong> ${finalExpected.toFixed(1)} bb</p>
-<p><strong>Std dev:</strong> ${finalSD.toFixed(1)} bb</p>
-<p><strong>68%:</strong> ${(finalExpected-finalSD).toFixed(1)} → ${(finalExpected+finalSD).toFixed(1)}</p>
-<p><strong>95%:</strong> ${(finalExpected-1.96*finalSD).toFixed(1)} → ${(finalExpected+1.96*finalSD).toFixed(1)}</p>
-<p><strong>98%:</strong> ${(finalExpected-2.326*finalSD).toFixed(1)} → ${(finalExpected+2.326*finalSD).toFixed(1)}</p>
+<strong>Expected result:</strong> ${finalMean.toFixed(1)} bb<br>
+<strong>Std deviation:</strong> ${finalSD.toFixed(1)} bb<br>
+<strong>Chance of losing entire bankroll over sample:</strong>
+<span style="color:${ruinProb>0.25?'#ff6b6b':'#2ecc71'}">
+${(ruinProb*100).toFixed(2)}%
+</span>
 `;
 
 const datasets=[];
@@ -220,7 +223,7 @@ const datasets=[];
 datasets.push({
 label:"Expected result",
 data:expectedData,
-borderWidth:3,
+borderWidth:4,
 pointRadius:0
 });
 
@@ -266,8 +269,9 @@ line.push(result);
 datasets.push({
 label:"Run "+(r+1),
 data:line,
-borderWidth:1,
-pointRadius:0
+borderWidth:1.2,
+pointRadius:0,
+borderColor:"rgba(100,150,255,0.25)"
 });
 
 }
@@ -288,6 +292,38 @@ datasets:datasets
 options:{
 
 responsive:true,
+maintainAspectRatio:false,
+
+interaction:{
+mode:'nearest',
+intersect:false
+},
+
+onHover:(event,activeElements)=>{
+
+chart.data.datasets.forEach(ds=>{
+
+if(ds.label.startsWith("Run")){
+ds.borderWidth=1.2;
+ds.borderColor="rgba(100,150,255,0.25)";
+}
+
+});
+
+if(activeElements.length>0){
+
+const ds=chart.data.datasets[activeElements[0].datasetIndex];
+
+if(ds.label.startsWith("Run")){
+ds.borderWidth=3.5;
+ds.borderColor="rgba(255,255,255,0.95)";
+}
+
+}
+
+chart.update('none');
+
+},
 
 plugins:{
 
