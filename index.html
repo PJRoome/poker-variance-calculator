@@ -177,12 +177,26 @@ function normalCDF(x){
 }
 
 function getGraphStep(hands){
+
+  if(hands <= 1000){
+    return 1;
+  }
+
+  if(hands <= 10000){
+    return 10;
+  }
+
+  if(hands <= 100000){
+    return 500;
+  }
+
+  if(hands <= 1000000){
+    return 500;
+  }
+
+  // adaptive spacing above 1M hands
   const targetPoints = 900;
   const rawStep = hands / targetPoints;
-
-  if(rawStep <= 100){
-    return 100;
-  }
 
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
   const normalised = rawStep / magnitude;
