@@ -44,6 +44,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;
@@ -91,7 +96,7 @@ button {
 <label>Std dev (bb/100)</label>
 <input id="sd" type="number" value="150" step="1">
 
-<label>Total hands (1-1000000)</label>
+<label>Total hands (1–1,000,000)</label>
 <input id="hands" type="number" min="1" max="1000000" value="10000" step="100">
 
 <label>Simulation runs (1–20)</label>
@@ -115,7 +120,7 @@ button {
 <span>Show 98% interval</span>
 </div>
 
-<button onclick="calculate()">Run simulation</button>
+<button id="runButton" onclick="calculate()">Run simulation</button>
 
 </div>
 
@@ -128,6 +133,7 @@ button {
 <script>
 
 let chart;
+let worker;
 
 const whiteBackgroundPlugin = {
   id: "whiteBackground",
@@ -146,16 +152,6 @@ function setPreset(){
   if(game !== "custom"){
     document.getElementById("sd").value = game;
   }
-}
-
-function randn(){
-  let u = 0;
-  let v = 0;
-
-  while(u === 0) u = Math.random();
-  while(v === 0) v = Math.random();
-
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
 function normalCDF(x){
@@ -188,13 +184,21 @@ function intervalDataset(label, data, dash){
 
 function calculate(){
 
+  const button = document.getElementById("runButton");
+  button.disabled = true;
+  button.textContent = "Simulating...";
+
   const winrate = Number(document.getElementById("winrate").value);
   const sd = Number(document.getElementById("sd").value);
-  const hands = Number(document.getElementById("hands").value);
+  let hands = Number(document.getElementById("hands").value);
   const bankroll = Number(document.getElementById("bankroll").value);
 
+  hands = Math.min(Math.max(hands, 1), 1000000);
+  document.getElementById("hands").value = hands;
+
   let runs = Number(document.getElementById("runs").value);
-  runs = Math.min(Math.max(runs, 1), 50);
+  runs = Math.min(Math.max(runs, 1), 20);
+  document.getElementById("runs").value = runs;
 
   const show68 = document.getElementById("show68").checked;
   const show95 = document.getElementById("show95").checked;
@@ -270,61 +274,79 @@ function calculate(){
     </span>
   `;
 
-  const datasets = [];
-
-  datasets.push({
-    label: "Expected result",
-    data: expectedData,
-    borderWidth: 4,
-    pointRadius: 0
-  });
-
-  datasets.push({
-    label: "Bankroll line",
-    data: bustLine,
-    borderWidth: 2,
-    borderDash: [6, 6],
-    pointRadius: 0
-  });
-
-  if(show68){
-    datasets.push(intervalDataset("68% upper", upper68, [4, 4]));
-    datasets.push(intervalDataset("68% lower", lower68, [4, 4]));
+  if(worker){
+    worker.terminate();
   }
 
-  if(show95){
-    datasets.push(intervalDataset("95% upper", upper95, [8, 4]));
-    datasets.push(intervalDataset("95% lower", lower95, [8, 4]));
-  }
+  worker = new Worker("worker.js");
 
-  if(show98){
-    datasets.push(intervalDataset("98% upper", upper98, [2, 4]));
-    datasets.push(intervalDataset("98% lower", lower98, [2, 4]));
-  }
+  worker.onmessage = function(event){
+    const runLines = event.data.runLines;
 
-  for(let r = 0; r < runs; r++){
-
-    let result = 0;
-    const line = [];
-
-    for(let h = 0; h <= hands; h += step){
-
-      if(h === 0){
-        line.push(0);
-      } else {
-        result += winrate + sd * randn();
-        line.push(result);
-      }
-    }
+    const datasets = [];
 
     datasets.push({
-      label: "Run " + (r + 1),
-      data: line,
-      borderWidth: 1.2,
-      pointRadius: 0,
-      tension: 0.1
+      label: "Expected result",
+      data: expectedData,
+      borderWidth: 4,
+      pointRadius: 0
     });
-  }
+
+    datasets.push({
+      label: "Bankroll line",
+      data: bustLine,
+      borderWidth: 2,
+      borderDash: [6, 6],
+      pointRadius: 0
+    });
+
+    if(show68){
+      datasets.push(intervalDataset("68% upper", upper68, [4, 4]));
+      datasets.push(intervalDataset("68% lower", lower68, [4, 4]));
+    }
+
+    if(show95){
+      datasets.push(intervalDataset("95% upper", upper95, [8, 4]));
+      datasets.push(intervalDataset("95% lower", lower95, [8, 4]));
+    }
+
+    if(show98){
+      datasets.push(intervalDataset("98% upper", upper98, [2, 4]));
+      datasets.push(intervalDataset("98% lower", lower98, [2, 4]));
+    }
+
+    for(let r = 0; r < runLines.length; r++){
+      datasets.push({
+        label: "Run " + (r + 1),
+        data: runLines[r],
+        borderWidth: 1.2,
+        pointRadius: 0,
+        tension: 0.1
+      });
+    }
+
+    drawChart(labels, datasets);
+
+    button.disabled = false;
+    button.textContent = "Run simulation";
+  };
+
+  worker.onerror = function(error){
+    document.getElementById("results").innerHTML += `<br><br><strong style="color:#ff6b6b;">Worker error:</strong> ${error.message}`;
+    button.disabled = false;
+    button.textContent = "Run simulation";
+  };
+
+  worker.postMessage({
+    winrate: winrate,
+    sd: sd,
+    hands: hands,
+    runs: runs,
+    step: step
+  });
+}
+
+function drawChart(labels, datasets){
 
   const ctx = document.getElementById("chart").getContext("2d");
 
