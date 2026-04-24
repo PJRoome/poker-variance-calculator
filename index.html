@@ -1,230 +1,338 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Poker Variance Calculator</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 900px;
-      margin: 40px auto;
-      padding: 20px;
-      background: #111;
-      color: #eee;
-    }
+<meta charset="UTF-8">
+<title>Poker Variance Simulator</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    h1 {
-      text-align: center;
-    }
+<style>
+body {
+  font-family: Arial, sans-serif;
+  max-width: 1000px;
+  margin: 40px auto;
+  padding: 20px;
+  background: #111;
+  color: #eee;
+}
 
-    .card {
-      background: #1c1c1c;
-      padding: 20px;
-      border-radius: 12px;
-      margin-bottom: 20px;
-    }
+h1 {
+  text-align: center;
+}
 
-    label {
-      display: block;
-      margin-top: 12px;
-    }
+.card {
+  background: #1c1c1c;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
 
-    input, select, button {
-      width: 100%;
-      padding: 10px;
-      margin-top: 5px;
-      border-radius: 6px;
-      border: none;
-      font-size: 16px;
-    }
+label {
+  display: block;
+  margin-top: 12px;
+}
 
-    button {
-      margin-top: 20px;
-      background: #2ecc71;
-      color: #111;
-      font-weight: bold;
-      cursor: pointer;
-    }
+input, select, button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 6px;
+  border-radius: 6px;
+  border: none;
+  font-size: 16px;
+  box-sizing: border-box;
+}
 
-    .results p {
-      font-size: 18px;
-    }
+button {
+  margin-top: 20px;
+  background: #2ecc71;
+  color: #111;
+  font-weight: bold;
+  cursor: pointer;
+}
 
-    canvas {
-      background: #fff;
-      border-radius: 12px;
-      padding: 10px;
-    }
-  </style>
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.checkbox-row input {
+  width: auto;
+  margin: 0;
+}
+
+.results p {
+  font-size: 17px;
+}
+
+canvas {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+}
+</style>
 </head>
 
 <body>
-  <h1>Poker Variance Calculator</h1>
 
-  <div class="card">
-    <label>Game type</label>
-    <select id="game" onchange="setPreset()">
-      <option value="90">NLHE Cash</option>
-      <option value="150" selected>PLO Cash</option>
-      <option value="180">High Variance PLO</option>
-      <option value="custom">Custom</option>
-    </select>
+<h1>Poker Variance Simulator</h1>
 
-    <label>Winrate, bb/100</label>
-    <input id="winrate" type="number" value="5" step="0.1">
+<div class="card">
 
-    <label>Standard deviation, bb/100</label>
-    <input id="sd" type="number" value="150" step="1">
+<label>Game preset</label>
+<select id="game" onchange="setPreset()">
+<option value="90">NLHE Cash</option>
+<option value="150" selected>PLO Cash</option>
+<option value="180">High Variance PLO</option>
+<option value="custom">Custom</option>
+</select>
 
-    <label>Hands played</label>
-    <input id="hands" type="number" value="10000" step="100">
+<label>Winrate (bb/100)</label>
+<input id="winrate" type="number" value="5">
 
-    <label>Confidence range</label>
-    <select id="confidence">
-      <option value="1">68%</option>
-      <option value="1.96" selected>95%</option>
-      <option value="2.58">99%</option>
-    </select>
+<label>Std dev (bb/100)</label>
+<input id="sd" type="number" value="150">
 
-    <label>Bankroll, bb</label>
-    <input id="bankroll" type="number" value="2000" step="100">
+<label>Total hands</label>
+<input id="hands" type="number" value="10000">
 
-    <button onclick="calculate()">Calculate</button>
-  </div>
+<label>Simulation runs (1–50)</label>
+<input id="runs" type="number" min="1" max="50" value="10">
 
-  <div class="card results" id="results"></div>
+<label>Bankroll (bb)</label>
+<input id="bankroll" type="number" value="2000">
 
-  <div class="card">
-    <canvas id="varianceChart"></canvas>
-  </div>
+<div class="checkbox-row">
+<input id="show68" type="checkbox" checked>
+<span>Show 68% interval</span>
+</div>
 
-  <script>
-    let chart;
+<div class="checkbox-row">
+<input id="show95" type="checkbox" checked>
+<span>Show 95% interval</span>
+</div>
 
-    function setPreset() {
-      const game = document.getElementById("game").value;
-      if (game !== "custom") {
-        document.getElementById("sd").value = game;
-      }
-    }
+<div class="checkbox-row">
+<input id="show98" type="checkbox" checked>
+<span>Show 98% interval</span>
+</div>
 
-    function calculate() {
-      const winrate = Number(document.getElementById("winrate").value);
-      const sd = Number(document.getElementById("sd").value);
-      const hands = Number(document.getElementById("hands").value);
-      const z = Number(document.getElementById("confidence").value);
-      const bankroll = Number(document.getElementById("bankroll").value);
+<button onclick="calculate()">Run simulation</button>
 
-      const expected = winrate * hands / 100;
-      const sampleSD = sd * Math.sqrt(hands / 100);
+</div>
 
-      const low = expected - z * sampleSD;
-      const high = expected + z * sampleSD;
+<div class="card results" id="results"></div>
 
-      const downswingRiskLine = -bankroll;
-      const isBankrollInRange = low <= downswingRiskLine;
+<div class="card">
+<canvas id="chart"></canvas>
+</div>
 
-      document.getElementById("results").innerHTML = `
-        <h2>Results</h2>
-        <p><strong>Expected result:</strong> ${expected.toFixed(1)} bb</p>
-        <p><strong>Standard deviation over sample:</strong> ${sampleSD.toFixed(1)} bb</p>
-        <p><strong>Selected range:</strong> ${low.toFixed(1)} bb to ${high.toFixed(1)} bb</p>
-        <p><strong>Worst point in range:</strong> ${low.toFixed(1)} bb</p>
-        <p><strong>Bankroll:</strong> ${bankroll.toFixed(0)} bb</p>
-        <p>
-          <strong>Bankroll warning:</strong>
-          ${isBankrollInRange
-            ? "Your selected confidence range includes losing your full bankroll."
-            : "Your bankroll is outside the selected downswing range."}
-        </p>
-      `;
+<script>
 
-      drawChart(winrate, sd, hands, z, bankroll);
-    }
+let chart;
 
-    function drawChart(winrate, sd, hands, z, bankroll) {
-      const labels = [];
-      const expectedData = [];
-      const upperData = [];
-      const lowerData = [];
-      const bustLine = [];
+function setPreset(){
+const game = document.getElementById("game").value;
+if(game !== "custom"){
+document.getElementById("sd").value = game;
+}
+}
 
-      const points = 50;
+function randn(){
+let u=0,v=0;
+while(u===0) u=Math.random();
+while(v===0) v=Math.random();
+return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
 
-      for (let i = 0; i <= points; i++) {
-        const h = (hands / points) * i;
-        const expected = winrate * h / 100;
-        const sampleSD = sd * Math.sqrt(h / 100);
+function intervalDataset(label,data,dash){
+return{
+label:label,
+data:data,
+borderWidth:2,
+pointRadius:0,
+borderDash:dash,
+tension:0.1
+};
+}
 
-        labels.push(Math.round(h));
-        expectedData.push(expected);
-        upperData.push(expected + z * sampleSD);
-        lowerData.push(expected - z * sampleSD);
-        bustLine.push(-bankroll);
-      }
+function calculate(){
 
-      const ctx = document.getElementById("varianceChart").getContext("2d");
+const winrate=Number(document.getElementById("winrate").value);
+const sd=Number(document.getElementById("sd").value);
+const hands=Number(document.getElementById("hands").value);
+const bankroll=Number(document.getElementById("bankroll").value);
 
-      if (chart) {
-        chart.destroy();
-      }
+let runs=Number(document.getElementById("runs").value);
+runs=Math.min(Math.max(runs,1),50);
 
-      chart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: labels,
-          datasets: [
-            {
-              label: "Upper range",
-              data: upperData,
-              borderWidth: 2
-            },
-            {
-              label: "Expected result",
-              data: expectedData,
-              borderWidth: 3
-            },
-            {
-              label: "Lower range",
-              data: lowerData,
-              borderWidth: 2
-            },
-            {
-              label: "Bankroll lost",
-              data: bustLine,
-              borderWidth: 2,
-              borderDash: [6, 6]
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            title: {
-              display: true,
-              text: "Poker Variance Over Hands"
-            }
-          },
-          scales: {
-            x: {
-              title: {
-                display: true,
-                text: "Hands"
-              }
-            },
-            y: {
-              title: {
-                display: true,
-                text: "Profit / Loss, bb"
-              }
-            }
-          }
-        }
-      });
-    }
+const show68=document.getElementById("show68").checked;
+const show95=document.getElementById("show95").checked;
+const show98=document.getElementById("show98").checked;
 
-    calculate();
-  </script>
+const labels=[];
+const expectedData=[];
+const bustLine=[];
+
+const upper68=[];
+const lower68=[];
+const upper95=[];
+const lower95=[];
+const upper98=[];
+const lower98=[];
+
+const step=100;
+
+for(let h=0;h<=hands;h+=step){
+
+const expected=winrate*h/100;
+const sampleSD=sd*Math.sqrt(h/100);
+
+labels.push(h);
+expectedData.push(expected);
+bustLine.push(-bankroll);
+
+upper68.push(expected+sampleSD);
+lower68.push(expected-sampleSD);
+
+upper95.push(expected+1.96*sampleSD);
+lower95.push(expected-1.96*sampleSD);
+
+upper98.push(expected+2.326*sampleSD);
+lower98.push(expected-2.326*sampleSD);
+
+}
+
+const finalExpected=winrate*hands/100;
+const finalSD=sd*Math.sqrt(hands/100);
+
+document.getElementById("results").innerHTML=`
+<h2>Results</h2>
+<p><strong>Expected:</strong> ${finalExpected.toFixed(1)} bb</p>
+<p><strong>Std dev:</strong> ${finalSD.toFixed(1)} bb</p>
+<p><strong>68%:</strong> ${(finalExpected-finalSD).toFixed(1)} → ${(finalExpected+finalSD).toFixed(1)}</p>
+<p><strong>95%:</strong> ${(finalExpected-1.96*finalSD).toFixed(1)} → ${(finalExpected+1.96*finalSD).toFixed(1)}</p>
+<p><strong>98%:</strong> ${(finalExpected-2.326*finalSD).toFixed(1)} → ${(finalExpected+2.326*finalSD).toFixed(1)}</p>
+`;
+
+const datasets=[];
+
+datasets.push({
+label:"Expected result",
+data:expectedData,
+borderWidth:3,
+pointRadius:0
+});
+
+datasets.push({
+label:"Bankroll line",
+data:bustLine,
+borderWidth:2,
+borderDash:[6,6],
+pointRadius:0
+});
+
+if(show68){
+datasets.push(intervalDataset("68% upper",upper68,[4,4]));
+datasets.push(intervalDataset("68% lower",lower68,[4,4]));
+}
+
+if(show95){
+datasets.push(intervalDataset("95% upper",upper95,[8,4]));
+datasets.push(intervalDataset("95% lower",lower95,[8,4]));
+}
+
+if(show98){
+datasets.push(intervalDataset("98% upper",upper98,[2,4]));
+datasets.push(intervalDataset("98% lower",lower98,[2,4]));
+}
+
+for(let r=0;r<runs;r++){
+
+let result=0;
+const line=[];
+
+for(let h=0;h<=hands;h+=step){
+
+if(h===0){
+line.push(0);
+}else{
+result+=winrate+sd*randn();
+line.push(result);
+}
+
+}
+
+datasets.push({
+label:"Run "+(r+1),
+data:line,
+borderWidth:1,
+pointRadius:0
+});
+
+}
+
+const ctx=document.getElementById("chart").getContext("2d");
+
+if(chart) chart.destroy();
+
+chart=new Chart(ctx,{
+
+type:"line",
+
+data:{
+labels:labels,
+datasets:datasets
+},
+
+options:{
+
+responsive:true,
+
+plugins:{
+
+title:{
+display:true,
+text:"Poker Variance Simulation"
+},
+
+legend:{
+labels:{
+filter:function(item){
+return !item.text.startsWith("Run");
+}
+}
+}
+
+},
+
+scales:{
+
+x:{
+title:{
+display:true,
+text:"Hands"
+}
+},
+
+y:{
+title:{
+display:true,
+text:"Profit (bb)"
+}
+}
+
+}
+
+}
+
+});
+
+}
+
+calculate();
+
+</script>
+
 </body>
 </html>
